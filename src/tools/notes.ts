@@ -1,10 +1,4 @@
-import {
-  type App,
-  type CachedMetadata,
-  MarkdownView,
-  TFile,
-  WorkspaceLeaf,
-} from 'obsidian'
+import { type App, type CachedMetadata, MarkdownView, TFile } from 'obsidian'
 import OmnisearchPlugin from '../main'
 import type { ResultNote } from '../globals'
 
@@ -161,7 +155,7 @@ export async function createNote(
         pathPrefix = (app.workspace.getActiveFile()?.parent?.path ?? '') + '/'
         break
       case 'folder':
-        pathPrefix = app.vault.getConfig('newFileFolderPath') + '/'
+        pathPrefix = (app.vault.getConfig('newFileFolderPath') as string) + '/'
         break
       default: // 'root'
         pathPrefix = ''
@@ -169,10 +163,10 @@ export async function createNote(
     }
     await app.workspace.openLinkText(`${pathPrefix}${name}.md`, '', newLeaf)
   } catch (e) {
-    ;(e as any).message =
-      'OmniSearch - Could not create note: ' + (e as any).message
-    console.error(e)
-    throw e
+    const message = e instanceof Error ? e.message : String(e)
+    const error = new Error('OmniSearch - Could not create note: ' + message)
+    console.error(error)
+    throw error
   }
 }
 

@@ -72,7 +72,10 @@ export async function filterAsync<T>(
  * @returns
  */
 export function stripMarkdownCharacters(text: string): string {
-  return text.replace(/(\*|_)+(.+?)(\*|_)+/g, (_match, _p1, p2) => p2)
+  return text.replace(
+    /(\*|_)+(.+?)(\*|_)+/g,
+    (_match: string, _p1: string, p2: string) => p2
+  )
 }
 
 /**
@@ -205,7 +208,7 @@ export function isFilePDF(path: string): boolean {
 
 export function isFileOffice(path: string): boolean {
   const ext = getExtension(path)
-  return ext === 'docx' || ext === 'xlsx'
+  return ext === 'docx' || ext === 'pptx' || ext === 'xlsx'
 }
 
 export function isFileCanvas(path: string): boolean {
@@ -270,11 +273,11 @@ export function splitHyphens(text: string): string[] {
   return text.split('-').filter(t => t)
 }
 
-export function logVerbose(...args: any[]): void {
+export function logVerbose(...args: unknown[]): void {
   printVerbose(console.debug, ...args)
 }
 
-export function warnVerbose(...args: any[]): void {
+export function warnVerbose(...args: unknown[]): void {
   printVerbose(console.warn, ...args)
 }
 
@@ -283,7 +286,10 @@ export function enableVerboseLogging(enable: boolean): void {
   verboseLoggingEnabled = enable
 }
 
-function printVerbose(fn: (...args: any[]) => any, ...args: any[]): void {
+function printVerbose(
+  fn: (...args: unknown[]) => void,
+  ...args: unknown[]
+): void {
   if (verboseLoggingEnabled) {
     fn(...args)
   }
