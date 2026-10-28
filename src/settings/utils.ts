@@ -114,4 +114,6 @@ export interface OmnisearchSettings extends WeightingSettings {
 
   DANGER_httpHost: string | null
   DANGER_forceSaveCache: boolean
+  /** Set while the cache is being written; still set at load = the last write was interrupted */
+  cacheWriteInProgress: boolean
 }

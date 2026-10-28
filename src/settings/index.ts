@@ -165,6 +165,7 @@ export function getDefaultSettings(app: App): OmnisearchSettings {
 
     DANGER_httpHost: null,
     DANGER_forceSaveCache: false,
+    cacheWriteInProgress: false,
   }
 }
 

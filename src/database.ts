@@ -11,7 +11,7 @@ export class Database extends Dexie {
     {
       date: string
       paths: DocumentRef[]
-      data: AsPlainObject
+      data: AsPlainObject | string
     },
     string
   >
@@ -35,7 +35,7 @@ export class Database extends Dexie {
 
   public async getMinisearchCache(): Promise<{
     paths: DocumentRef[]
-    data: AsPlainObject
+    data: AsPlainObject | string
   } | null> {
     try {
       const cachedIndex = (await this.plugin.database.minisearch.toArray())[0]
@@ -51,14 +51,21 @@ export class Database extends Dexie {
   }
 
   public async writeMinisearchCache(): Promise<void> {
-    const minisearchJson = this.plugin.searchEngine.getSerializedMiniSearch()
+    // One JSON string, not a nested object: IndexedDB structured-clones millions of
+    // small objects slowly (7-10 s at startup on a 950k-term index), JSON.parse is far faster
+    const minisearchJson = JSON.stringify(
+      this.plugin.searchEngine.getSerializedMiniSearch()
+    )
     const paths = this.plugin.searchEngine.getSerializedIndexedDocuments()
     const database = this.plugin.database
-    await database.minisearch.clear()
-    await database.minisearch.add({
-      date: new Date().toISOString(),
-      paths,
-      data: minisearchJson,
+    // One transaction, so quitting mid-write keeps the old cache instead of leaving it empty
+    await database.transaction('rw', database.minisearch, async () => {
+      await database.minisearch.clear()
+      await database.minisearch.add({
+        date: new Date().toISOString(),
+        paths,
+        data: minisearchJson,
+      })
     })
     console.debug('Omnisearch - Search cache written')
   }

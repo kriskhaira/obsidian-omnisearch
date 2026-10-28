@@ -50,17 +50,41 @@ export class SearchEngine {
     this.minisearch = new MiniSearch(this.getOptions())
   }
 
+  private preload: Promise<{
+    minisearch: MiniSearch<IndexedDocument>
+    paths: DocumentRef[]
+  } | null> | null = null
+
+  /**
+   * Read and deserialize the cache now, from onload, so it is ready by layoutReady:
+   * right after layout, other plugins (e.g. Dataview reading 33k cache entries) flood
+   * IndexedDB and the main thread, which turned a ~2 s load into 10+ s
+   */
+  startPreload(): void {
+    this.preload = (async () => {
+      await this.plugin.embedsRepository.loadFromCache()
+      const cache = await this.plugin.database.getMinisearchCache()
+      if (!cache) return null
+      // Synchronous on purpose: loadJSAsync yields with setTimeout(0) every 1000 terms,
+      // and the clamped/throttled timers turned a ~1 s load into ~24 s on a 950k-term index
+      const minisearch =
+        typeof cache.data === 'string'
+          ? MiniSearch.loadJSON(cache.data, this.getOptions())
+          : MiniSearch.loadJS(cache.data, this.getOptions())
+      return { minisearch, paths: cache.paths }
+    })()
+  }
+
   /**
    * Return true if the cache is valid
    */
   async loadCache(): Promise<boolean> {
-    await this.plugin.embedsRepository.loadFromCache()
-    const cache = await this.plugin.database.getMinisearchCache()
-    if (cache) {
-      // Synchronous on purpose: loadJSAsync yields with setTimeout(0) every 1000 terms,
-      // and the clamped/throttled timers turned a ~1 s load into ~24 s on a 950k-term index
-      this.minisearch = MiniSearch.loadJS(cache.data, this.getOptions())
-      this.indexedDocuments = new Map(cache.paths.map(o => [o.path, o.mtime]))
+    if (!this.preload) this.startPreload()
+    const loaded = await this.preload
+    this.preload = null
+    if (loaded) {
+      this.minisearch = loaded.minisearch
+      this.indexedDocuments = new Map(loaded.paths.map(o => [o.path, o.mtime]))
       return true
     }
     console.log('Omnisearch - No cache found')

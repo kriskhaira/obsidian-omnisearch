@@ -48,6 +48,7 @@ export default class OmnisearchPlugin extends Plugin {
   public readonly documentsRepository: DocumentsRepository
   public readonly embedsRepository = new EmbedsRepository(this)
   public readonly database = new Database(this)
+  private skipCacheWrite = false
 
   public readonly notesIndexer = new NotesIndexer(this)
   public readonly textProcessor = new TextProcessor(this)
@@ -64,6 +65,17 @@ export default class OmnisearchPlugin extends Plugin {
 
   async onload(): Promise<void> {
     this.settings = await loadSettings(this)
+    // The last cache write never finished (freeze, crash or quit): the cache itself is
+    // intact (writes are atomic), but skip writing it this session in case writing froze
+    if (this.settings.cacheWriteInProgress) {
+      this.skipCacheWrite = true
+      this.settings.cacheWriteInProgress = false
+      await saveSettings(this)
+      new Notice(
+        'Omnisearch - The last cache write was interrupted. The cache will not be updated this session.',
+        10_000
+      )
+    }
     this.addSettingTab(new SettingsTab(this))
 
     if (!Platform.isMobile) {
@@ -81,6 +93,9 @@ export default class OmnisearchPlugin extends Plugin {
 
     await cleanOldCacheFiles(this.app)
     await this.database.clearOldDatabases()
+    if (isCacheEnabled()) {
+      this.searchEngine.startPreload()
+    }
 
     registerAPI(this)
 
@@ -189,6 +204,8 @@ export default class OmnisearchPlugin extends Plugin {
     //   })
     //   new Notice(welcome, 20_000)
     // }
+    // Saving settings on every start held up the index load by up to 3 s at startup
+    if (this.settings.welcomeMessage === code) return
     this.settings.welcomeMessage = code
     await this.saveData(this.settings)
   }
@@ -201,10 +218,8 @@ export default class OmnisearchPlugin extends Plugin {
       removeEventListener('blur', this.refreshIndexCallback)
     }
 
-    // Clear cache when disabling Omnisearch
-    if (process.env.NODE_ENV === 'production') {
-      void this.database.clearCache()
-    }
+    // The cache is kept on unload: a plugin reload (every update) used to wipe it, and the
+    // next start re-indexed the whole vault. Settings → Clear cache still removes it
     this.apiHttpServer?.close()
   }
 
@@ -299,13 +314,18 @@ export default class OmnisearchPlugin extends Plugin {
     searchEngine.removeFromPaths(diff.toRemove.map(o => o.path))
     await searchEngine.addFromPaths(diff.toAdd.map(o => o.path))
 
-    if ((diff.toRemove.length || diff.toAdd.length) && isCacheEnabled()) {
+    if (
+      (diff.toRemove.length || diff.toAdd.length) &&
+      isCacheEnabled() &&
+      !this.skipCacheWrite
+    ) {
       indexingStep.set(IndexingStepType.WritingCache)
 
-      // Disable settings.useCache while writing the cache, in case it freezes
-      const cacheEnabled = this.settings.useCache
-      if (cacheEnabled && !this.settings.DANGER_forceSaveCache) {
-        this.settings.useCache = false
+      // Flag the write instead of turning useCache off: a quit mid-write used to leave
+      // caching off for good, and every later start re-indexed the whole vault
+      const guard = !this.settings.DANGER_forceSaveCache
+      if (guard) {
+        this.settings.cacheWriteInProgress = true
         await saveSettings(this)
       }
 
@@ -313,9 +333,8 @@ export default class OmnisearchPlugin extends Plugin {
       await this.database.writeMinisearchCache()
       await this.embedsRepository.writeToCache()
 
-      // Re-enable settings.caching
-      if (cacheEnabled) {
-        this.settings.useCache = true
+      if (guard) {
+        this.settings.cacheWriteInProgress = false
         await saveSettings(this)
       }
     }

@@ -63,8 +63,10 @@ export class EmbedsRepository {
     for (const [path, embedsList] of this.embeds) {
       data.push({ embedded: path, referencedBy: [...embedsList] })
     }
-    await database.embeds.clear()
-    await database.embeds.bulkAdd(data)
+    await database.transaction('rw', database.embeds, async () => {
+      await database.embeds.clear()
+      await database.embeds.bulkAdd(data)
+    })
   }
 
   public async loadFromCache(): Promise<void> {
