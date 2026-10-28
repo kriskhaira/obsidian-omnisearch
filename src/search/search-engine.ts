@@ -57,10 +57,9 @@ export class SearchEngine {
     await this.plugin.embedsRepository.loadFromCache()
     const cache = await this.plugin.database.getMinisearchCache()
     if (cache) {
-      this.minisearch = await MiniSearch.loadJSAsync(
-        cache.data,
-        this.getOptions()
-      )
+      // Synchronous on purpose: loadJSAsync yields with setTimeout(0) every 1000 terms,
+      // and the clamped/throttled timers turned a ~1 s load into ~24 s on a 950k-term index
+      this.minisearch = MiniSearch.loadJS(cache.data, this.getOptions())
       this.indexedDocuments = new Map(cache.paths.map(o => [o.path, o.mtime]))
       return true
     }
